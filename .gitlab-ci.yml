@@ -1,3 +1,63 @@
+<<<<<<< HEAD
+image: docker:stable
+
+variables:
+  REPOSITORY_URL: /*account_id*/.dkr.ecr.us-east-1.amazonaws.com/myserver
+  REPOSITORY_HOST: /*account_id*/.dkr.ecr.us-east-1.amazonaws.com
+  REPOSITORY_NAME: myserver
+  DOCKER_TLS_CERTDIR: "/certs"
+
+services:
+  - docker:dind
+
+stages:
+  - build-container
+  - deploy
+
+.deploy-image: &deploy_image
+  script:
+    # Prepare the image with Python, AWS CLI, NPM, cfn-create-or-update
+    - apk add --update python3 python3-dev py-pip build-base
+    - pip install awscli --upgrade --user
+    - export PATH=$HOME/.local/bin:$PATH
+    - apk add --update npm
+    - npm config set unsafe-perm true
+    - npm install -g cfn-create-or-update
+    # Run the stack update
+    - echo Setting Docker image version to tag $CI_COMMIT_SHA
+    - find minicub_ec2.yaml -type f -exec sed -i "s/IMAGE/${REPOSITORY_HOST}\/${REPOSITORY_NAME}:${CI_COMMIT_SHA}/g" {} +
+     - cfn-create-or-update --stack-name "rubyserver" --template-body file:./minicub_ec2.yaml --capabilities "CAPABILITY_IAM" "CAPABILITY_NAMED_IAM"
+    - echo Deploying
+
+buildImage:
+  stage: build-container
+  image: docker
+  before_script:
+    - amazon-linux-extras install docker
+    - aws --version
+    - docker --version
+  script:
+    # Download SPIs to install
+    - apk add curl unzip
+    - apk add --update python3 python3-dev py-pip build-base
+    - pip install awscli --upgrade --user
+    - docker build -t rubyserver . 
+    - docker tag rubyserver $REPOSITORY_URL:$CI_COMMIT_SHA
+    # Login to AWS ECR store the Docker container we are going to build
+    - echo $CI_COMMIT_SHA
+    - $(aws ecr get-login --no-include-email --region us-east-1)
+    # Tag and push into ECR
+    - docker push $REPOSITORY_URL:$CI_COMMIT_SHA
+    - docker tag rubyserver $REPOSITORY_URL:latest
+    - docker push $REPOSITORY_URL:latest
+
+deploy:
+  <<: *deploy_image
+  stage: deploy
+  when: manual
+  environment:
+    name: dev
+=======
 image: docker:stable
 
 variables:
@@ -76,3 +136,4 @@ deploy-CACHE:
   when: manual
   environment:
     name: CACHE
+>>>>>>> 47082b4a7550b7fb6c052be1d92f3bd72c1f9bb9
